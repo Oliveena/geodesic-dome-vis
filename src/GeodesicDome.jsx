@@ -333,7 +333,101 @@ export default function GeodesicDomeVisualizer() {
       const ventWireframeMesh = new THREE.Mesh(ventGeometry, ventWireframeMaterial);
       group.add(ventWireframeMesh);
     }
-    
+
+    // Add edge struts and base ring for hemisphere mode
+    if (hemisphereMode) {
+      // Step 1: Collect all unique vertices from triangles
+      const vertexMap = new Map();
+      triangles.forEach(triangle => {
+        triangle.forEach(vertex => {
+          // Create unique key for each vertex (x, y, z rounded to 6 decimals)
+          const key = `${vertex[0].toFixed(6)},${vertex[1].toFixed(6)},${vertex[2].toFixed(6)}`;
+          if (!vertexMap.has(key)) {
+            vertexMap.set(key, vertex);
+          }
+        });
+      });
+
+      // Step 2: Find edge vertices (vertices near y=0, the bottom rim)
+      const edgeVertices = [];
+      Array.from(vertexMap.values()).forEach(vertex => {
+        // If vertex height is close to 0, it's an edge vertex
+        if (vertex[1] < 0.1 && vertex[1] > -0.1) {
+          edgeVertices.push(vertex);
+        }
+      });
+
+      // Step 3: Create vertical struts from edge vertices to ground
+      const strutMaterial = new THREE.MeshPhongMaterial({
+        color: 0x4a5568,
+        shininess: 60
+      });
+
+      edgeVertices.forEach(vertex => {
+        const height = Math.abs(vertex[1]); // Distance from vertex to ground
+        const strutGeometry = new THREE.CylinderGeometry(0.015, 0.015, height, 8);
+        const strut = new THREE.Mesh(strutGeometry, strutMaterial);
+
+        // Position strut at vertex x,z coordinates, halfway down to ground
+        strut.position.set(vertex[0], vertex[1] / 2, vertex[2]);
+        group.add(strut);
+      });
+
+      // Step 4: Create base ring (circular outline at ground level)
+      const baseRadius = 1; // Same as dome radius
+      const ringGeometry = new THREE.RingGeometry(baseRadius * 0.95, baseRadius, 64);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00d9ff,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.6
+      });
+      const baseRing = new THREE.Mesh(ringGeometry, ringMaterial);
+      baseRing.rotation.x = -Math.PI / 2; // Rotate to lay flat
+      baseRing.position.y = 0; // At ground level
+      group.add(baseRing);
+
+      // Step 5: Create triangular panels to fill gaps between struts
+      const panelMaterial = new THREE.MeshPhongMaterial({
+        color: 0x4da6ff,
+        shininess: 30,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+      });
+
+      // Sort edge vertices by angle around the circle
+      const sortedEdgeVertices = edgeVertices.sort((a, b) => {
+        const angleA = Math.atan2(a[2], a[0]);
+        const angleB = Math.atan2(b[2], b[0]);
+        return angleA - angleB;
+      });
+
+      // Create triangular panels between consecutive edge vertices
+      for (let i = 0; i < sortedEdgeVertices.length; i++) {
+        const v1 = sortedEdgeVertices[i];
+        const v2 = sortedEdgeVertices[(i + 1) % sortedEdgeVertices.length]; // Wrap around to first
+
+        // Create triangle from v1 -> v2 -> ground point below v1 -> back to v1
+        const panelGeometry = new THREE.BufferGeometry();
+        const panelVertices = new Float32Array([
+          v1[0], v1[1], v1[2],  // Top vertex 1
+          v2[0], v2[1], v2[2],  // Top vertex 2
+          v1[0], 0, v1[2],      // Ground point below v1
+
+          v2[0], v2[1], v2[2],  // Top vertex 2
+          v2[0], 0, v2[2],      // Ground point below v2
+          v1[0], 0, v1[2]       // Ground point below v1
+        ]);
+
+        panelGeometry.setAttribute('position', new THREE.BufferAttribute(panelVertices, 3));
+        panelGeometry.computeVertexNormals();
+
+        const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+        group.add(panel);
+      }
+    }
+
     // Add floors to the group
     if (showFloors && hemisphereMode) {
       const domeHeight = 1; // Dome radius
@@ -391,14 +485,14 @@ export default function GeodesicDomeVisualizer() {
     
     // Add tower to the group
     if (showTower && hemisphereMode) {
-      // Tower base (sits at top of dome)
-      const baseGeometry = new THREE.CylinderGeometry(0.15, 0.33, 0.1, 8);
+      // Tower base (sits at top of dome) - minimal base
+      const baseGeometry = new THREE.CylinderGeometry(0.18, 0.22, 0.08, 8);
       const baseMaterial = new THREE.MeshPhongMaterial({
         color: 0x2d3748,
         shininess: 40
       });
       const base = new THREE.Mesh(baseGeometry, baseMaterial);
-      base.position.y = 1.05;
+      base.position.y = 1.04;
       group.add(base);
       
       // Tower main structure
@@ -453,7 +547,7 @@ export default function GeodesicDomeVisualizer() {
       }
       
       // Dome top (observatory dome)
-      const domeGeometry = new THREE.SphereGeometry(0.25, 8, 8, 0, Math.PI * 2, 0, Math.PI / 3);
+      const domeGeometry = new THREE.SphereGeometry(0.33, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2.5);
       const domeMaterial = new THREE.MeshPhongMaterial({
         color: 0xff6b35,
         transparent: true,
@@ -461,7 +555,7 @@ export default function GeodesicDomeVisualizer() {
         shininess: 80
       });
 
-      // Dome top consists of: 
+      // Dome top consists of:
       // Solid, colored dome
       const observatoryDome = new THREE.Mesh(domeGeometry, domeMaterial);
       observatoryDome.position.y = 1;
