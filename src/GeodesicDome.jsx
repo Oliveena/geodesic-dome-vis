@@ -430,11 +430,15 @@ export default function GeodesicDomeVisualizer() {
 
     // Add floors to the group
     if (showFloors && hemisphereMode) {
-      const domeHeight = 1; // Dome radius
-      
+      const domeRadius = 1; // Dome radius
+
       for (let i = 0; i < numFloors; i++) {
-        const floorHeight = (i + 1) * (domeHeight / (numFloors + 1)) - domeHeight;
-        const radiusAtHeight = Math.sqrt(1 - floorHeight * floorHeight);
+        // Calculate height from bottom (0) to top (1) of hemisphere
+        const floorHeight = (i + 1) * (domeRadius / (numFloors + 1));
+        // Calculate radius at this height using sphere equation: r² = R² - h²
+        // But we need h from center, so h = floorHeight - domeRadius gives negative
+        // Actually for hemisphere: x² + y² + z² = 1, at height y, radius = sqrt(1 - y²)
+        const radiusAtHeight = Math.sqrt(domeRadius * domeRadius - floorHeight * floorHeight);
         
         // Floor platform
         const floorGeometry = new THREE.CircleGeometry(radiusAtHeight * 0.95, 32);
@@ -463,19 +467,21 @@ export default function GeodesicDomeVisualizer() {
         group.add(edge);
         
         // Support pillars (4 per floor)
-        const pillarGeometry = new THREE.CylinderGeometry(0.02, 0.02, domeHeight / (numFloors + 1), 8);
+        const pillarHeight = domeRadius / (numFloors + 1);
+        const pillarGeometry = new THREE.CylinderGeometry(0.02, 0.02, pillarHeight, 8);
         const pillarMaterial = new THREE.MeshPhongMaterial({
           color: 0x4a5568,
           shininess: 60
         });
-        
+
         for (let j = 0; j < 4; j++) {
           const angle = (j * Math.PI / 2) + Math.PI / 4;
           const pillarRadius = radiusAtHeight * 0.7;
           const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
+          // Position pillar centered between current floor and floor below
           pillar.position.set(
             Math.cos(angle) * pillarRadius,
-            floorHeight - (domeHeight / (numFloors + 1)) / 2,
+            floorHeight - pillarHeight / 2,
             Math.sin(angle) * pillarRadius
           );
           group.add(pillar);
